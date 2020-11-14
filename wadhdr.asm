@@ -1,6 +1,9 @@
 // Super hacky COM program that starts with 'IWAD' and some valid numbers that are a JMP..
 
-.code16gcc
+// convince gas we're assembling 16bit (286) code
+.text
+.code16
+.arch i286
 
 /* WAD header:
 	MAGIC 'IWAD'
@@ -28,31 +31,21 @@ _start:
 */
 .byte 0
 .byte 0
-.int _wadinfotab
+.int 0
 
 _continue:
 	// fix up after entry sequence
 	dec %sp
 	pop %di
-	// say hi!
-	mov $_himum, %edx
-	mov $9, %ah
-	int $0x21
 
 	// run some C
 	.extern cstart
 	call cstart
 
 	// bye-bye back to MS-DOS
-	mov $0x4c00, %ax
+	mov $0x4c, %ah
+	mov $0, %al
 	int $0x21
 
-_himum:
-.ascii "Hi Mum!$"
-
-_wadinfotab:
-// here we prefix the info table from the source WAD with null entries to reach 1771,
-// then simply concatenate the remaining real entries, fixing up any offsets
-// - tada, valid WAD ;)
 .end
 
