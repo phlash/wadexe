@@ -1,2 +1,4 @@
 wadexe.elf
 wadexe.com
+*.o
+doom*

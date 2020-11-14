@@ -1,8 +1,6 @@
 // Super hacky COM program that starts with 'IWAD' and some valid numbers that are a JMP..
 
-.global _start
-.org 0x100
-.code16
+.code16gcc
 
 /* WAD header:
 	MAGIC 'IWAD'
@@ -11,6 +9,7 @@
   12 bytes total.
 */
 
+.global _start
 _start:
 .ascii "IWAD"
 /* disassembles to:
@@ -36,9 +35,13 @@ _continue:
 	dec %sp
 	pop %di
 	// say hi!
-	mov $_himum, %dx
+	mov $_himum, %edx
 	mov $9, %ah
 	int $0x21
+
+	// run some C
+	.extern cstart
+	call cstart
 
 	// bye-bye back to MS-DOS
 	mov $0x4c00, %ax
