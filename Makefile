@@ -5,8 +5,6 @@ all: wadexe.com
 
 wadexe.com: wadexe.elf
 	objcopy -O binary -j .text -j .rodata $< $@
-#	dd if=tmp.bin of=$@ bs=256 skip=1
-#	rm tmp.bin
 
 wadexe.elf: wadhdr.o stub.o
 	ld -m elf_i386 -Ttext=0x100 -o $@ $^
@@ -18,7 +16,7 @@ stub.o: stub.c
 	gcc -m16 -fno-pic -c -o $@ $<
 
 clean:
-	rm -f wadexe.* *.o tmp.bin
+	rm -f wadexe.* *.o
 
 test: wadexe.com
 	dosbox ./wadexe.com
