@@ -2,7 +2,7 @@
 # a valid DOOM WAD :-)
 # NB: Using faucc as a workable 16-bit C compiler, with gas backend
 
-all: wadexe.com
+all: wadexe.com wadinject
 
 # faucc and our asm only emit .text and .data, but other tools (gcc)
 # tend to include other garbage, so we skip those when converting to
@@ -28,8 +28,11 @@ stub.o: stub.c
 	as --32 -c -o $@ stub.s -a=$@.s
 	rm stub.s
 
+wadinject: wadinject.c
+	gcc -o $@ $<
+
 clean:
-	rm -f wadexe.* *.o *.o.s
+	rm -f wadinject wadexe.* *.o *.o.s
 
 test: wadexe.com
 	dosbox ./wadexe.com
