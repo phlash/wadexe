@@ -32,7 +32,7 @@ wadinject: wadinject.c
 	gcc -o $@ $<
 
 clean:
-	rm -f wadinject wadexe.* *.o *.o.s
+	rm -f wadinject wadexe.* *.o *.o.s DOOM1EXE.COM
 
 test: wadexe.com
 	dosbox ./wadexe.com

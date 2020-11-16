@@ -55,22 +55,36 @@ int puts(char *str) {
 	return s-str;
 }
 
+char *getwad() {
+	// check command line, default to DOOM1EXE.COM
+	unsigned char l = *((unsigned char *)0x80);
+	char *c = (char *)0x81;
+	char *r = 0;
+	unsigned char i;
+	if (!l)
+		return "DOOM1EXE.COM";
+	for (i=0; i<l; i++) {
+		if (!r && c[i]>' ')
+			r = c+i;
+	}
+	c[i] = 0;
+	return r;
+}
+
 void cstart() {
-	char *yo = "\r\nIt's C time!\r\n";
 	char buf[12];
 	int fd;
 	if (sizeof(int)!=4) {
 		puts("Error: sizeof(int)!=4\r\n");
 		return;
 	}
-	puts(yo);
-	fd = open("WADEXE.COM");
+	fd = open(getwad());
 	if (fd<0) {
-		puts("oops opening file");
+		puts("\r\noops opening file");
 		return;
 	}
 	if (read(fd, buf, 12)!=12) {
-		puts("oops reading WAD header");
+		puts("\r\noops reading WAD header");
 		close(fd);
 		return;
 	}
