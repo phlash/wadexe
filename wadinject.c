@@ -1,7 +1,8 @@
-// Inject the COM program into a WAD file..
+// Inject the COM loader and unwrapped LE/LX DOOM binary into a WAD file..
 
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <alloca.h>
 
@@ -17,11 +18,78 @@ typedef struct {
 	char name[8];
 } lump_t;
 
-int process(char *wadfile, char *outfile, char *wadexe) {
-	int rv=1, lcnt, rd, idx, esz, isz;
+void *loaddoom(char *doomexe, int *plen) {
+	// Open DOS4/GW embedded binary
+	FILE *dfp = fopen(doomexe, "rb");
+	void *plx = NULL;
+	char buf[64];
+	int fnd, nrd;
+	if (!dfp) {
+		perror("opening doomexe");
+		return NULL;
+	}
+	// search through multi-exec headers until we find LE/LX marker, taken from DOS32/A logic..
+	// https://github.com/open-watcom/open-watcom-v2/blob/master/contrib/extender/dos32a/src/sb/sbind.asm#424
+	fnd=0;
+	while (!fnd) {
+		int off;
+		// read (next) exec header
+		if (fread(buf, sizeof(buf), 1, dfp)!=1) {
+			perror("reading doomexe");
+			goto oops;
+		}
+		// skip MZ or BW exec..
+		if (memcmp(buf, "MZ", 2)==0 ||
+			memcmp(buf, "BW", 2)==0) {
+			// calculate next exec offset and seek
+			off = *((short*)(buf+2)) + *((short*)(buf+4))*512 - sizeof(buf);
+			if (memcmp(buf, "MZ", 2)==0)
+				off -= 512;
+			if (fseek(dfp, off, SEEK_CUR)<0) {
+				perror("seeking doomexe");
+				goto oops;
+			}
+			continue;
+		}
+		// could this be the one?
+		if (memcmp(buf, "LX\0\0", 4)==0 ||
+			memcmp(buf, "LE\0\0", 4)==0) {
+			fnd=1;
+			break;
+		}
+		// move a byte, try again..
+		if (fseek(dfp, 1-sizeof(buf), SEEK_CUR)<0) {
+			perror("seeking doomexe");
+			goto oops;
+		}
+	}
+	if (!fnd) {
+		fprintf(stderr, "failed to find LE/LX binary in doomexe\n");
+		goto oops;
+	}
+	// read remainder of file into buffer
+	fnd = ftell(dfp)-sizeof(buf);
+	fseek(dfp, 0, SEEK_END);
+	*plen = ftell(dfp)-fnd;
+	fseek(dfp, fnd, SEEK_SET);
+	plx = malloc(*plen);
+	if (fread(plx, *plen, 1, dfp)!=1) {
+		perror("reading doomexe");
+		free(plx);
+		plx = NULL;
+	}
+oops:
+	if (dfp)
+		fclose(dfp);
+	return plx;
+}
+
+int process(char *wadfile, char *doomexe, char *outfile, char *wadexe) {
+	int rv=1, lcnt, rd, idx, dsz, esz, isz;
 	wad_header_t hdr;
 	wad_header_t *exe;
 	lump_t *wadlumps;
+	void *doom;
 	char *buf[BUFSIZ];
 	// open files..
 	FILE *wad = fopen(wadfile, "rb");
@@ -49,8 +117,13 @@ int process(char *wadfile, char *outfile, char *wadexe) {
 		goto oops;
 	}
 	// check wadfile is below lcnt
-	if (hdr.count >= lcnt) {
+	if (hdr.count > lcnt-2) {
 		fprintf(stderr, "%s: too many lumps to inject\n", wadfile);
+		goto oops;
+	}
+	// load DOOM LE/LX binary (removing embedded DOS4/GW)
+	doom = loaddoom(doomexe, &dsz);
+	if (!doom) {
 		goto oops;
 	}
 	// load wadfile directory..
@@ -81,14 +154,19 @@ int process(char *wadfile, char *outfile, char *wadexe) {
 		perror("reading wadexe");
 		goto oops;
 	}
-	// calculate size of injected COM program
-	isz = esz-sizeof(wad_header_t);
+	// calculate size of injected COM program+DOOM binary
+	isz = esz+dsz-sizeof(wad_header_t);
 	// adjust offset to directory in outfile
-	// assumes directory was at end of wadfile!
+	// NB: assumes directory was at end of wadfile!
 	exe->offset = hdr.offset + isz;
 	// write outfile header + COM program
 	if (fwrite(exe, esz, 1, out)!=1) {
 		perror("writing outfile");
+		goto oops;
+	}
+	// write DOOM binary
+	if (fwrite(doom, dsz, 1, out)!=1) {
+		perror("writing DOOM binary");
 		goto oops;
 	}
 	// copy rest of wadfile content up to directory
@@ -117,8 +195,13 @@ int process(char *wadfile, char *outfile, char *wadexe) {
 	}
 	// add new entry for COM program ;)
 	wadlumps[idx].offset = sizeof(wad_header_t);
-	wadlumps[idx].size = isz;
+	wadlumps[idx].size = esz-sizeof(wad_header_t);
 	strcpy(wadlumps[idx].name, "COMPROG");
+	idx++;
+	// add new entry for DOOM binary ;)
+	wadlumps[idx].offset = esz;
+	wadlumps[idx].size = dsz;
+	strcpy(wadlumps[idx].name, "DOOMEXE");
 	idx++;
 	// add additional zero length entries to pad out to lcnt
 	while (idx<lcnt) {
@@ -145,18 +228,21 @@ oops:
 }
 
 int usage() {
-	puts("usage: wadinject [-h] [-w <wadfile>] [-e <wadexe.com>] [-o <outfile>]");
+	puts("usage: wadinject [-h] [-w <wadfile>] [-d <doom.exe>] [-e <wadexe.com>] [-o <outfile>]");
 	return 0;
 }
 
 int main(int argc, char **argv) {
 	char *wadfile = "doom19s/DOOM1.WAD";
+	char *doomexe = "doom19s/DOOM.EXE";
 	char *wadexe  = "wadexe.com";
 	char *outfile = "DOOM1EXE.COM";
 	for (int arg=1; arg<argc; arg++) {
 		if (!strncmp(argv[arg],"-h",2) || !strncmp(argv[arg],"--h",3))
 			return usage();
 		else if (!strncmp(argv[arg],"-w",2))
+			wadfile = argv[++arg];
+		else if (!strncmp(argv[arg],"-d",2))
 			wadfile = argv[++arg];
 		else if (!strncmp(argv[arg],"-e",2))
 			wadexe = argv[++arg];
@@ -166,6 +252,6 @@ int main(int argc, char **argv) {
 			printf("ignoring unknown arg: %s\n", argv[arg]);
 	}
 	printf("wadinject: wadfile=%s, eadexe=%s, outfile=%s\n", wadfile, wadexe, outfile);
-	return process(wadfile, outfile, wadexe);
+	return process(wadfile, doomexe, outfile, wadexe);
 }
 
