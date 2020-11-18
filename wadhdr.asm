@@ -38,6 +38,11 @@ _continue:
 	dec %sp
 	pop %di
 
+	// ensure segment registers are sane
+	mov %cs, %ax
+	mov %ax, %ds
+	mov %ax, %es
+
 	// run some C
 	.extern cstart
 	call cstart

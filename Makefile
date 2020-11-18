@@ -41,6 +41,7 @@ clean:
 	rm -rf $(BIN) $(RUN)
 
 test: all
+	rm -rf $(RUN)
 	mkdir -p $(RUN)
 	$(BIN)/wadinject -w doom19s/DOOM1.WAD -e $(BIN)/wadexe.com -d doom19s/DOOM.EXE -o $(RUN)/DOOM1WAD.COM
 	cd $(RUN); dosbox ./DOOM1WAD.COM
