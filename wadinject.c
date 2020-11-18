@@ -19,6 +19,29 @@ typedef struct {
 } lump_t;
 
 void *loaddoom(char *doomexe, int *plen) {
+	// Suck in the whole file
+	FILE *dfp = fopen(doomexe, "rb");
+	void *pdm;
+	if (!dfp) {
+		perror("opening doomexe");
+		return NULL;
+	}
+	if (fseek(dfp, 0, SEEK_END)<0) {
+		perror("seeking doomexe");
+		return NULL;
+	}
+	*plen = ftell(dfp);
+	fseek(dfp, 0, SEEK_SET);
+	pdm = malloc(*plen);
+	if (fread(pdm, *plen, 1, dfp)!=1) {
+		perror("reading doomexe");
+		return NULL;
+	}
+	fclose(dfp);
+	return pdm;
+}
+
+void *loaddoomlx(char *doomexe, int *plen) {
 	// Open DOS4/GW embedded binary
 	FILE *dfp = fopen(doomexe, "rb");
 	void *plx = NULL;
@@ -121,7 +144,7 @@ int process(char *wadfile, char *doomexe, char *outfile, char *wadexe) {
 		fprintf(stderr, "%s: too many lumps to inject\n", wadfile);
 		goto oops;
 	}
-	// load DOOM LE/LX binary (removing embedded DOS4/GW)
+	// load DOOM LE/LX binary (retaining embedded DOS4/GW)
 	doom = loaddoom(doomexe, &dsz);
 	if (!doom) {
 		goto oops;
@@ -227,8 +250,42 @@ oops:
 	return rv;
 }
 
+int viewwad(char *wadfile) {
+	FILE *wad = fopen(wadfile, "rb");
+	wad_header_t hdr;
+	lump_t lump;
+	int rv = 1;
+	if (!wad) {
+		perror("opening wadfile");
+		goto oops;
+	}
+	if (fread(&hdr, sizeof(hdr), 1, wad)!=1) {
+		perror("reading wadfile");
+		goto oops;
+	}
+	printf("%s: type: %.4s, lumps: %d directory@%08x\n",
+		wadfile, hdr.ident, hdr.count, hdr.offset);
+	if (fseek(wad, hdr.offset, SEEK_SET)<0) {
+		perror("seeking wadfile");
+		goto oops;
+	}
+	for (int h=0; h<hdr.count; h++) {
+		if (fread(&lump, sizeof(lump), 1, wad)!=1) {
+			perror("reading lump descriptor");
+			goto oops;
+		}
+		printf("  %04d: name: %8.8s, size: %6d, offset: %08x\n",
+			h, lump.name, lump.size, lump.offset);
+	}
+	rv = 0;
+oops:
+	if (wad)
+		fclose(wad);
+	return rv;
+}
+
 int usage() {
-	puts("usage: wadinject [-h] [-w <wadfile>] [-d <doom.exe>] [-e <wadexe.com>] [-o <outfile>]");
+	puts("usage: wadinject [-h] [-v] [-w <wadfile>] [-d <doom.exe>] [-e <wadexe.com>] [-o <outfile>]");
 	return 0;
 }
 
@@ -236,22 +293,30 @@ int main(int argc, char **argv) {
 	char *wadfile = "doom19s/DOOM1.WAD";
 	char *doomexe = "doom19s/DOOM.EXE";
 	char *wadexe  = "wadexe.com";
-	char *outfile = "DOOM1EXE.COM";
+	char *outfile = "DOOM1WAD.COM";
+	int view = 0;
 	for (int arg=1; arg<argc; arg++) {
 		if (!strncmp(argv[arg],"-h",2) || !strncmp(argv[arg],"--h",3))
 			return usage();
 		else if (!strncmp(argv[arg],"-w",2))
 			wadfile = argv[++arg];
 		else if (!strncmp(argv[arg],"-d",2))
-			wadfile = argv[++arg];
+			doomexe = argv[++arg];
 		else if (!strncmp(argv[arg],"-e",2))
 			wadexe = argv[++arg];
 		else if (!strncmp(argv[arg],"-o",2))
 			outfile = argv[++arg];
+		else if (!strncmp(argv[arg],"-v",2))
+			view = 1;
 		else
 			printf("ignoring unknown arg: %s\n", argv[arg]);
 	}
-	printf("wadinject: wadfile=%s, eadexe=%s, outfile=%s\n", wadfile, wadexe, outfile);
-	return process(wadfile, doomexe, outfile, wadexe);
+	if (view) {
+		printf("wadinject: viewing: %s\n", wadfile);
+		return viewwad(wadfile);
+	} else {
+		printf("wadinject: wadfile=%s, wadexe=%s, outfile=%s\n", wadfile, wadexe, outfile);
+		return process(wadfile, doomexe, outfile, wadexe);
+	}
 }
 

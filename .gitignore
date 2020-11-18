@@ -1,6 +1,4 @@
-wadexe.elf
-wadexe.com
-wadinject
-*.o
-*.o.s
-doom*
+doom19*
+doom95*
+bin/
+run/
